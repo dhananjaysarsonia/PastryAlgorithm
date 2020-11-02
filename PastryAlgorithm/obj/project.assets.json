@@ -1405,19 +1405,20 @@
     ]
   },
   "packageFolders": {
-    "/Users/dhananjaysarsonia/.nuget/packages/": {}
+    "/Users/forumgala/.nuget/packages/": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "/Users/dhananjaysarsonia/RiderProjects/PastryAlgorithm/PastryAlgorithm/PastryAlgorithm.fsproj",
+      "projectUniqueName": "/Users/forumgala/Desktop/Fall_2020/DOS/Proj3/PastryAlgorithm/PastryAlgorithm/PastryAlgorithm.fsproj",
       "projectName": "PastryAlgorithm",
-      "projectPath": "/Users/dhananjaysarsonia/RiderProjects/PastryAlgorithm/PastryAlgorithm/PastryAlgorithm.fsproj",
-      "packagesPath": "/Users/dhananjaysarsonia/.nuget/packages/",
-      "outputPath": "/Users/dhananjaysarsonia/RiderProjects/PastryAlgorithm/PastryAlgorithm/obj/",
+      "projectPath": "/Users/forumgala/Desktop/Fall_2020/DOS/Proj3/PastryAlgorithm/PastryAlgorithm/PastryAlgorithm.fsproj",
+      "packagesPath": "/Users/forumgala/.nuget/packages/",
+      "outputPath": "/Users/forumgala/Desktop/Fall_2020/DOS/Proj3/PastryAlgorithm/PastryAlgorithm/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "/Users/dhananjaysarsonia/.nuget/NuGet/NuGet.Config"
+        "/Users/forumgala/NuGet.Config",
+        "/Users/forumgala/.nuget/NuGet/NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "netcoreapp3.1"
