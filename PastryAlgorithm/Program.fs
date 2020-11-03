@@ -16,6 +16,10 @@ open System.Threading;
 let nNodes = 100
 let nRequest = 5
 
+//Array to store hop counts for each request
+let totalRequests = nNodes * nRequest
+let mutable hopCountArray = Array.create totalRequests 0
+    
 let digits = int <| ceil(Math.Log(float <| nNodes) / Math.Log(float <| 16))
 let hashActorMap : System.Collections.Generic.IDictionary<String, IActorRef>  = dict[]
 let col = 16
@@ -92,6 +96,7 @@ let peer(mailbox : Actor<_>) =
             for i in 0 .. routingTable.GetLength(0) do
                 if String.IsNullOrEmpty routingTable.[rowIndex, i] then
                     routingTable.[rowIndex, i] <- row.[i]
+                
         
 //        |Route(hashKey, hashSource, hopCount) ->
 //            if String.Compare(hashKey, peerId)  = 0 then
@@ -114,7 +119,25 @@ let peer(mailbox : Actor<_>) =
     
 
 
-
+let closestNode sourceId destId newId=
+    let source = hexToDec sourceId
+    let destination = hexToDec destId
+    let newNodeId = hexToDec newId
+    let diff1 = abs source - destination
+    let diff2 = abs newNodeId - destination
+    let mutable resId = sourceId
+    if diff2 < diff1 then
+        resId <- newId
+    resId
+    
+    
+let calculateAvg =
+    let mutable sum = 0
+    for i in 0 .. totalRequests-1 do
+        sum <- sum + i
+    let averageCount = sum / totalRequests
+    averageCount
+    
 
 let nodeId: String = String.replicate digits "0"
 printf "%A" nodeId
