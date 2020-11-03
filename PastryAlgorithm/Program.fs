@@ -134,7 +134,7 @@ let closestNode sourceId destId newId=
 let calculateAvg =
     let mutable sum = 0
     for i in 0 .. totalRequests-1 do
-        sum <- sum + i
+        sum <- sum + hopCountArray.[i]
     let averageCount = sum / totalRequests
     averageCount
     
