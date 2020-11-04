@@ -28,9 +28,10 @@ type Message =
     | Joining of String*int
     | UpdateRouting of String[]*int
     | UpdateLeaves
-    | Route of String*String*int
+    | Route of String*int
     | UpdateLeaf of String*String[]*String[]
     | IMadeYouLeaf of String
+    | Done of int
     
     
 let hexToDec (hex: String) =
@@ -128,7 +129,25 @@ let isEqual (l: String) (r : String) =
 let isNotNullString (str : String) =
     not (String.IsNullOrEmpty str)
     
+let getSizeOfLeaves(leaves: String[]) =
+    let mutable size = 0
+    for i in leaves do
+        if isNotNullString i then
+            size <- size + 1
     
+    size
+
+let getEmptyIndexInLeaves(leaves : String[]) =
+    let mutable index = 0
+    let mutable returnIndex = 0
+    for i in leaves do
+        if String.IsNullOrEmpty i then
+            returnIndex <- index
+        index <- index + 1
+        
+    returnIndex
+    
+
     
 let peer(mailbox : Actor<_>) =
     let mutable peerId = ""
@@ -190,6 +209,7 @@ let peer(mailbox : Actor<_>) =
                 for i in bigLeafArray do
                     if isNotNullString i then
                         nearest <- closestNode nearest hashKey i
+                //ignored for self check 
                 
                 if String.Compare(nearest, peerId) <> 0 then
                     hashActorMap.Item(nearest) <! Joining(hashKey, 0)
@@ -204,7 +224,7 @@ let peer(mailbox : Actor<_>) =
             else
                 //routing table check
                 if isNotNullString routingTable.[prefixMatch, routingColumn] then
-                    hashActorMap.Item(hashKey) <! Joining(hashKey, 0)
+                    hashActorMap.Item(routingTable.[prefixMatch, routingColumn]) <! Joining(hashKey, 0)
                 else
                     //search everything to find a nearest node
                     //rare case handle 
@@ -227,14 +247,6 @@ let peer(mailbox : Actor<_>) =
                         //termination logic repeated one as above
                         hashActorMap.Item(hashKey) <! UpdateLeaf(peerId, smallLeafArray, bigLeafArray)
                         
-                            
-                            
-                            
-                            
-          
-            
-            
-            
               //self table updation logic
             
             if String.IsNullOrEmpty routingTable.[prefixMatch, routingColumn] then
@@ -253,9 +265,174 @@ let peer(mailbox : Actor<_>) =
                 else
                     routingTable.[rowIndex, i] <- closestNode routingTable.[rowIndex, i] row.[i] peerId 
         
+        |UpdateLeaf(sourceId, sourceSmallLeafArray, sourceBigLeafArray) ->
+            let mutable combinedSourceLeaf : String[] = Array.zeroCreate 17
+            combinedSourceLeaf.[0] <- sourceId
+            let mutable index = 1
+            for i in sourceSmallLeafArray do
+                if isNotNullString i then
+                    combinedSourceLeaf.[index] <- i
+                    index <- index + 1
+            
+            for i in sourceBigLeafArray do
+                if isNotNullString i then
+                    combinedSourceLeaf.[index] <- i
+                    index <- index + 1
+                    
+            //check if i is maybe part of the leaves already
+            for i in combinedSourceLeaf do
+                if isNotNullString i then
+                    if i <> peerId then
+                        if isSmaller i peerId then
+                            let size = getSizeOfLeaves smallLeafArray
+                            if size < 8 then
+                                let index = getEmptyIndexInLeaves smallLeafArray
+                                smallLeafArray.[index] <- i
+                                hashActorMap.Item(i) <! IMadeYouLeaf(peerId)
+                            else
+                                let minIndex = getMinFromLeaf smallLeafArray
+                                if isSmaller smallLeafArray.[minIndex] i then
+                                    smallLeafArray.[minIndex] <- i
+                                    hashActorMap.Item(i) <! IMadeYouLeaf(peerId)
+                        else
+                            let size = getSizeOfLeaves bigLeafArray
+                            if size < 8 then
+                                let index = getEmptyIndexInLeaves bigLeafArray
+                                bigLeafArray.[index] <- i
+                                hashActorMap.Item(i) <! IMadeYouLeaf(peerId)
+                            else
+                                let maxIndex = getMaxFromLeaf bigLeafArray
+                                if isGreater bigLeafArray.[maxIndex] i then
+                                    bigLeafArray.[maxIndex] <- i
+                                    hashActorMap.Item(i) <! IMadeYouLeaf(peerId)
+                                
+                                
+        | IMadeYouLeaf(sourceId) ->
+                let i = sourceId
+                if i <> peerId then
+                    if isSmaller i peerId then
+                        let size = getSizeOfLeaves smallLeafArray
+                        if size < 8 then
+                            let index = getEmptyIndexInLeaves smallLeafArray
+                            smallLeafArray.[index] <- i
+                            hashActorMap.Item(i) <! IMadeYouLeaf(peerId)
+                        else
+                            let minIndex = getMinFromLeaf smallLeafArray
+                            if isSmaller smallLeafArray.[minIndex] i then
+                                smallLeafArray.[minIndex] <- i
+                                hashActorMap.Item(i) <! IMadeYouLeaf(peerId)
+                    else
+                        let size = getSizeOfLeaves bigLeafArray
+                        if size < 8 then
+                            let index = getEmptyIndexInLeaves bigLeafArray
+                            bigLeafArray.[index] <- i
+                            hashActorMap.Item(i) <! IMadeYouLeaf(peerId)
+                        else
+                            let maxIndex = getMaxFromLeaf bigLeafArray
+                            if isGreater bigLeafArray.[maxIndex] i then
+                                bigLeafArray.[maxIndex] <- i
+                                hashActorMap.Item(i) <! IMadeYouLeaf(peerId)
+                
+        | Route(key,hopCount) ->
+            
+            if key <> peerId then
+                let mutable maxLeafIndex = getMaxFromLeaf bigLeafArray
+                let mutable smallLeafIndex = getMinFromLeaf smallLeafArray
+                
+                let mutable maxLeafHash = ""
+                let mutable minLeafHash = ""
+                if maxLeafIndex <> -1 then
+                    maxLeafHash <- bigLeafArray.[maxLeafIndex]
+                if smallLeafIndex <> -1 then
+                    minLeafHash <- smallLeafArray.[smallLeafIndex]
+                
+                
+                if String.IsNullOrEmpty maxLeafHash then
+                    maxLeafHash <- peerId
+                
+                if String.IsNullOrEmpty minLeafHash then
+                    minLeafHash <- peerId
+                
+                if ((isSmaller key maxLeafHash) && (isGreater key minLeafHash)) || (isEqual key maxLeafHash) || (isEqual key minLeafHash) then
+                    //route towards nearest
+                    let mutable nearest = peerId
+                    for i in smallLeafArray do
+                        if isNotNullString i then
+                            nearest <- closestNode nearest key i
+                    
+                    for i in bigLeafArray do
+                        if isNotNullString i then
+                            nearest <- closestNode nearest key i
+                    //ignored for self check 
+                    
+                    if String.Compare(nearest, peerId) <> 0 then
+                        hashActorMap.Item(nearest) <! Route(key, hopCount + 1)
+                    else
+                        //I am taking it as the key
+                        mailbox.Context.Parent <! Done(hopCount)
+                else
+                    //routing table check
+                    let prefixMatch = getPrefixMatch peerId key
+                    let routingColumn = hexToDec (string <| (peerId.[prefixMatch]))
+                    if isNotNullString routingTable.[prefixMatch, routingColumn] then
+                        hashActorMap.Item(routingTable.[prefixMatch, routingColumn]) <! Route(key, hopCount + 1)
+                    else
+                        //search everything to find a nearest node
+                    //rare case handle 
+                        let mutable rareCaseNode = peerId
+                        for i in bigLeafArray do
+                            if isNotNullString i then
+                                rareCaseNode <- closestNode peerId key i
+                                
+                        for i in smallLeafArray do
+                            if isNotNullString i then
+                                rareCaseNode <- closestNode peerId key i
+                                
+                        for v in Seq.cast<String> routingTable do
+                            if isNotNullString v then
+                                rareCaseNode <- closestNode peerId key v
+                        
+                        if String.Compare(peerId, rareCaseNode) <> 0 then
+                            hashActorMap.Item(rareCaseNode) <! Route(key, hopCount + 1)
+                        else
+                            //termination logic repeated one as above
+                            mailbox.Context.Parent <! Done(hopCount)
+            else
+                mailbox.Context.Parent <! Done(hopCount)
+                    
+                
+                    
+                        
+                
+                        
+                        
+            
+
+            
+            
+                        
+                                
+                               
+                                
+            
+            
+//            for i in sourceSmallLeafArray do
+//                if (getSizeOfLeaves smallLeafArray) < 8 then
+//                    let index = getEmptyIndexInLeaves smallLeafArray
+//                    smallLeafArray.[index] <- i
+//                else
+//                    let minLeaf
+            
+                    
+                    
+            //for i in smallLeafArray do
+                
+//            let mLeafIndex = getMaxFromLeaf bigLeafArray
+//            let sLeafIndex  = getMinFromLeaf smallLeafArray
+            
         
                 
-                
+         
             
             
             
