@@ -190,10 +190,10 @@ let peer(mailbox : Actor<_>) =
 
         
         | Joining(hashKey, rowIndex) ->
-            Thread.Sleep(300)
+            Thread.Sleep(100)
             printf "joining for node %A and joining attempt with %A \n" hashKey peerId
-//            printf "bigleafset for peerid %A is %A" peerId bigLeafArray
-//            printf "smallLeafSet for peerId %A is %A" peerId smallLeafArray
+            printf "bigleafset for peerid %A is %A" peerId bigLeafArray
+            printf "smallLeafSet for peerId %A is %A" peerId smallLeafArray
 //  
             let prefixMatch = getPrefixMatch peerId hashKey
             let mutable rIndex = 0
@@ -471,21 +471,22 @@ let system = System.create "system" (Configuration.defaultConfig())
 let mutable doneCount = totalRequests
 let mutable nodeComplete = nNodes    
 let master(mailbox : Actor<_>) =
-    
+    let mutable notFirst = false
     let rec loop() = actor{
         let! message = mailbox.Receive()
         match message with
         
         
         | MasterStart ->
-            let mutable count = 0
-            let mutable notFirst = false
-            while count < nNodes do
+            let mutable aliveFound = false
+            while not aliveFound do
+                
+                //while count < nNodes do
                 let randNode = random.Next(nNodes)
                 
-                //printf "%A" liveActor
+                
                 if not liveActor.[randNode] then
-                    count <- count + 1
+                    aliveFound <- true
                     let mutable hexID = decToHexConverted randNode
                     //printf "%A" hexID
                    // printf "Creating node %A \n" hexID 
@@ -496,24 +497,29 @@ let master(mailbox : Actor<_>) =
                     let mutable flag = true
                     
                     while flag && notFirst do
+                       // printf "%A" randNode
                         let joinNode = random.Next(nNodes)
                         if liveActor.[joinNode] then
                             let joinHexId = decToHexConverted joinNode
                             hashActorMap.Item(joinHexId) <! Joining(hexID, 0)
-                            Thread.Sleep(100)
+                            //Thread.Sleep(100)
                             flag <- false
-                    notFirst <- true     
-                    
+                            
                     liveActor.[randNode] <- true
                     hashActorMap.Add(hexID, child)
+                    if not notFirst then
+                        notFirst <- true  
+                        mailbox.Self <! MasterStart
+                     
+                    
+                    
+                   
                     
                     
                     
                     
             //initilization of network done
-            printf "LET's START ROUTING OF KEYS"
-            for kv in hashActorMap do
-                kv.Value <! StartSending
+           
                 
                 
         | Done(hopCount, key, origin)->
@@ -530,6 +536,16 @@ let master(mailbox : Actor<_>) =
                 let average = sum / totalRequests
                 printf "Average hopCount: %A" average
            
+           
+        | JoiningDone(idOfJoined) ->
+            nodeComplete <- nodeComplete - 1
+            if nodeComplete = 0 then
+                printf "LET's START ROUTING OF KEYS"
+                for kv in hashActorMap do
+                    kv.Value <! StartSending
+            else
+                mailbox.Context.Self <! MasterStart
+                
         
         return! loop()
     }
