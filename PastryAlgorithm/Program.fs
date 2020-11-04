@@ -190,116 +190,122 @@ let peer(mailbox : Actor<_>) =
 
         
         | Joining(hashKey, rowIndex) ->
-            Thread.Sleep(100)
-            printf "joining for node %A and joining attempt with %A \n" hashKey peerId
-            printf "bigleafset for peerid %A is %A" peerId bigLeafArray
-            printf "smallLeafSet for peerId %A is %A" peerId smallLeafArray
-//  
-            let prefixMatch = getPrefixMatch peerId hashKey
-            let mutable rIndex = 0
-            if prefixMatch = routingTable.Length then
-                printf "ALERT!!!!!"
-            
-            while rIndex <= prefixMatch do
-                let mutable copiedRow : String[] = deepCopyRow routingTable rIndex
-                copiedRow.[hexToDec (string <| (peerId.[prefixMatch]))] <- peerId
-                hashActorMap.Item(hashKey) <! UpdateRouting(copiedRow,rIndex)
-                rIndex <- rIndex + 1
-    
-          
-            //now routing and termination logic
-            
-            //check leaves first
-            let mutable maxLeafIndex = getMaxFromLeaf bigLeafArray
-            let mutable smallLeafIndex = getMinFromLeaf smallLeafArray
-            
-            let mutable maxLeafHash = ""
-            let mutable minLeafHash = ""
-            if maxLeafIndex <> -1 then
-                maxLeafHash <- bigLeafArray.[maxLeafIndex]
-            if smallLeafIndex <> -1 then
-                minLeafHash <- smallLeafArray.[smallLeafIndex]
-            
-            
-            if String.IsNullOrEmpty maxLeafHash then
-                maxLeafHash <- peerId
-            
-            if String.IsNullOrEmpty minLeafHash then
-                minLeafHash <- peerId
                 
-            let routingColumn = hexToDec (string <| (hashKey.[prefixMatch]))
-            if ((isSmaller hashKey maxLeafHash) && (isGreater hashKey minLeafHash)) || minLeafHash = peerId || maxLeafHash = peerId  then
-                //route towards nearest
-                let mutable nearest = peerId
-                for i in smallLeafArray do
-                    if isNotNullString i then
-                        nearest <- closestNode nearest hashKey i
+            if String.Compare(hashKey, peerId) <> 0 then
+                Thread.Sleep(100)
+                printf "joining for node %A and joining attempt with %A \n" hashKey peerId
+                printf "bigleafset for peerid %A is %A" peerId bigLeafArray
+                printf "smallLeafSet for peerId %A is %A" peerId smallLeafArray
+                printf "Routing table for peer where join is attempted is %A %A \n" peerId routingTable
+    //  
+                let prefixMatch = getPrefixMatch peerId hashKey
+                let mutable rIndex = 0
+                if prefixMatch = routingTable.Length then
+                    printf "ALERT!!!!!"
                 
-                for i in bigLeafArray do
-                    if isNotNullString i then
-                        nearest <- closestNode nearest hashKey i
-                //ignored for self check 
+                while rIndex <= prefixMatch do
+                    let mutable copiedRow : String[] = deepCopyRow routingTable rIndex
+                    copiedRow.[hexToDec (string <| (peerId.[prefixMatch]))] <- peerId
+                    hashActorMap.Item(hashKey) <! UpdateRouting(copiedRow,rIndex)
+                    rIndex <- rIndex + 1
+        
+              
+                //now routing and termination logic
                 
-                if String.Compare(nearest, peerId) <> 0 then
-                    hashActorMap.Item(nearest) <! Joining(hashKey, 0)
+                //check leaves first
+                let mutable maxLeafIndex = getMaxFromLeaf bigLeafArray
+                let mutable smallLeafIndex = getMinFromLeaf smallLeafArray
+                
+                let mutable maxLeafHash = ""
+                let mutable minLeafHash = ""
+                if maxLeafIndex <> -1 then
+                    maxLeafHash <- bigLeafArray.[maxLeafIndex]
+                if smallLeafIndex <> -1 then
+                    minLeafHash <- smallLeafArray.[smallLeafIndex]
+                
+                
+                if String.IsNullOrEmpty maxLeafHash then
+                    maxLeafHash <- peerId
+                
+                if String.IsNullOrEmpty minLeafHash then
+                    minLeafHash <- peerId
                     
-                else
-                    //termination logic
-                    //try me as leaf
-                    
-                    hashActorMap.Item(hashKey) <! UpdateLeaf(peerId, smallLeafArray, bigLeafArray)
-                    mailbox.Context.Parent <! JoiningDone(hashKey)
-                    //
-                
-            else
-                //routing table check
-                
-                if isNotNullString routingTable.[prefixMatch, routingColumn] then
-                    hashActorMap.Item(routingTable.[prefixMatch, routingColumn]) <! Joining(hashKey, 0)
-                else
-                    //search everything to find a nearest node
-                    //rare case handle
-                    
-                    printf "RARE CASE ENTER" 
-                    let mutable rareCaseNode = peerId
-                    for i in bigLeafArray do
-                        if isNotNullString i then
-                            rareCaseNode <- closestNode peerId hashKey i
-                            
+                let routingColumn = hexToDec (string <| (hashKey.[prefixMatch]))
+                if ((isSmaller hashKey maxLeafHash) && (isGreater hashKey minLeafHash)) || minLeafHash = peerId || maxLeafHash = peerId  then
+                    //route towards nearest
+                    let mutable nearest = peerId
                     for i in smallLeafArray do
                         if isNotNullString i then
-                            rareCaseNode <- closestNode peerId hashKey i
-                            
-                    for v in Seq.cast<String> routingTable do
-                        if isNotNullString v then
-                            rareCaseNode <- closestNode peerId hashKey v
+                            nearest <- closestNode nearest hashKey i
                     
-                    if String.Compare(peerId, rareCaseNode) <> 0 then
-                        hashActorMap.Item(rareCaseNode) <! Joining(hashKey, 0)
+                    for i in bigLeafArray do
+                        if isNotNullString i then
+                            nearest <- closestNode nearest hashKey i
+                    //ignored for self check 
+                    
+                    if String.Compare(nearest, peerId) <> 0 then
+                        hashActorMap.Item(nearest) <! Joining(hashKey, 0)
+                        
                     else
-                        //termination logic repeated one as above
+                        //termination logic
+                        //try me as leaf
+                        
                         hashActorMap.Item(hashKey) <! UpdateLeaf(peerId, smallLeafArray, bigLeafArray)
                         mailbox.Context.Parent <! JoiningDone(hashKey)
+                        //
+                    
+                else
+                    //routing table check
+                    
+                    if isNotNullString routingTable.[prefixMatch, routingColumn] then
+                        hashActorMap.Item(routingTable.[prefixMatch, routingColumn]) <! Joining(hashKey, 0)
+                    else
+                        //search everything to find a nearest node
+                        //rare case handle
                         
-              //self table updation logic
-            
-            if String.IsNullOrEmpty routingTable.[prefixMatch, routingColumn] then
-                routingTable.[prefixMatch, routingColumn] <- hashKey
+                        printf "RARE CASE ENTER" 
+                        let mutable rareCaseNode = peerId
+                        for i in bigLeafArray do
+                            if isNotNullString i then
+                                rareCaseNode <- closestNode peerId hashKey i
+                                
+                        for i in smallLeafArray do
+                            if isNotNullString i then
+                                rareCaseNode <- closestNode peerId hashKey i
+                                
+                        for v in Seq.cast<String> routingTable do
+                            if isNotNullString v then
+                                rareCaseNode <- closestNode peerId hashKey v
+                        
+                        if String.Compare(peerId, rareCaseNode) <> 0 then
+                            hashActorMap.Item(rareCaseNode) <! Joining(hashKey, 0)
+                        else
+                            //termination logic repeated one as above
+                            hashActorMap.Item(hashKey) <! UpdateLeaf(peerId, smallLeafArray, bigLeafArray)
+                            mailbox.Context.Parent <! JoiningDone(hashKey)
+                            
+                  //self table updation logic
+                
+                if String.IsNullOrEmpty routingTable.[prefixMatch, routingColumn] then
+                    routingTable.[prefixMatch, routingColumn] <- hashKey
+                else
+                    let currentNode = routingTable.[prefixMatch, routingColumn]
+                    routingTable.[prefixMatch, routingColumn] <- closestNode currentNode peerId hashKey
             else
-                let currentNode = routingTable.[prefixMatch, routingColumn]
-                routingTable.[prefixMatch, routingColumn] <- closestNode currentNode hashKey peerId
+                 mailbox.Context.Parent <! JoiningDone(hashKey)
+                
                 
             
                 
         |UpdateRouting(row, rowIndex) ->
             for i in 0 .. routingTable.GetLength(0) do
-                if isNotNullString row.[i] && row.[i] <> peerId then
+                if isNotNullString row.[i] && String.Compare(row.[i], peerId) <> 0 then
                     let newRow = getPrefixMatch peerId row.[i]
                     if String.IsNullOrEmpty routingTable.[newRow, i] then
                         routingTable.[newRow, i] <- row.[i]
                         
                     else
-                        routingTable.[newRow, i] <- closestNode routingTable.[newRow, i] row.[i] peerId
+                        routingTable.[newRow, i] <- closestNode routingTable.[newRow, i] peerId row.[i]
             
             printf "Routing table for %A is %A \n" peerId routingTable
         
@@ -533,13 +539,14 @@ let master(mailbox : Actor<_>) =
                 for i in hopCountArray do
                     sum <- sum + i
                 
-                let average = sum / totalRequests
+                let average = (float <| sum) / (float <| totalRequests)
                 printf "Average hopCount: %A" average
            
            
         | JoiningDone(idOfJoined) ->
             nodeComplete <- nodeComplete - 1
-            if nodeComplete = 0 then
+            printf "Nodes Left %A \n" nodeComplete
+            if nodeComplete = 1 then
                 printf "LET's START ROUTING OF KEYS"
                 for kv in hashActorMap do
                     kv.Value <! StartSending
