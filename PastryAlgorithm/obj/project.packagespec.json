@@ -1,10 +1,10 @@
 ﻿{
   "version": "1.0.0",
   "restore": {
-    "projectUniqueName": "/Users/forumgala/Desktop/Fall_2020/DOS/Proj3/PastryAlgorithm/PastryAlgorithm/PastryAlgorithm.fsproj",
+    "projectUniqueName": "/Users/dhananjaysarsonia/RiderProjects/PastryAlgorithm/PastryAlgorithm/PastryAlgorithm.fsproj",
     "projectName": "PastryAlgorithm",
-    "projectPath": "/Users/forumgala/Desktop/Fall_2020/DOS/Proj3/PastryAlgorithm/PastryAlgorithm/PastryAlgorithm.fsproj",
-    "outputPath": "/Users/forumgala/Desktop/Fall_2020/DOS/Proj3/PastryAlgorithm/PastryAlgorithm/obj/",
+    "projectPath": "/Users/dhananjaysarsonia/RiderProjects/PastryAlgorithm/PastryAlgorithm/PastryAlgorithm.fsproj",
+    "outputPath": "/Users/dhananjaysarsonia/RiderProjects/PastryAlgorithm/PastryAlgorithm/obj/",
     "projectStyle": "PackageReference",
     "originalTargetFrameworks": [
       "netcoreapp3.1"

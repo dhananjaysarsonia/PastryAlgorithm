@@ -38,6 +38,8 @@ type Message =
     | Done of int*String*String
     | StartSending
     | MasterStart
+    | JoiningDone of String
+
     
     
 let hexToDec (hex: String) =
@@ -65,8 +67,8 @@ let closestNode sourceId destId newId=
     let source = hexToDec sourceId
     let destination = hexToDec destId
     let newNodeId = hexToDec newId
-    let diff1 = abs source - destination
-    let diff2 = abs newNodeId - destination
+    let diff1 = abs (source - destination)
+    let diff2 = abs (newNodeId - destination)
     let mutable resId = sourceId
     if diff2 < diff1 then
         resId <- newId
@@ -188,10 +190,15 @@ let peer(mailbox : Actor<_>) =
 
         
         | Joining(hashKey, rowIndex) ->
-            printf "joining for peerId %A and joining attempt with %A \n" hashKey peerId
-  
+            Thread.Sleep(300)
+            printf "joining for node %A and joining attempt with %A \n" hashKey peerId
+//            printf "bigleafset for peerid %A is %A" peerId bigLeafArray
+//            printf "smallLeafSet for peerId %A is %A" peerId smallLeafArray
+//  
             let prefixMatch = getPrefixMatch peerId hashKey
             let mutable rIndex = 0
+            if prefixMatch = routingTable.Length then
+                printf "ALERT!!!!!"
             
             while rIndex <= prefixMatch do
                 let mutable copiedRow : String[] = deepCopyRow routingTable rIndex
@@ -221,7 +228,7 @@ let peer(mailbox : Actor<_>) =
                 minLeafHash <- peerId
                 
             let routingColumn = hexToDec (string <| (hashKey.[prefixMatch]))
-            if (isSmaller hashKey maxLeafHash) && (isGreater hashKey minLeafHash) then
+            if ((isSmaller hashKey maxLeafHash) && (isGreater hashKey minLeafHash)) || minLeafHash = peerId || maxLeafHash = peerId  then
                 //route towards nearest
                 let mutable nearest = peerId
                 for i in smallLeafArray do
@@ -241,15 +248,19 @@ let peer(mailbox : Actor<_>) =
                     //try me as leaf
                     
                     hashActorMap.Item(hashKey) <! UpdateLeaf(peerId, smallLeafArray, bigLeafArray)
+                    mailbox.Context.Parent <! JoiningDone(hashKey)
                     //
                 
             else
                 //routing table check
+                
                 if isNotNullString routingTable.[prefixMatch, routingColumn] then
                     hashActorMap.Item(routingTable.[prefixMatch, routingColumn]) <! Joining(hashKey, 0)
                 else
                     //search everything to find a nearest node
-                    //rare case handle 
+                    //rare case handle
+                    
+                    printf "RARE CASE ENTER" 
                     let mutable rareCaseNode = peerId
                     for i in bigLeafArray do
                         if isNotNullString i then
@@ -268,6 +279,7 @@ let peer(mailbox : Actor<_>) =
                     else
                         //termination logic repeated one as above
                         hashActorMap.Item(hashKey) <! UpdateLeaf(peerId, smallLeafArray, bigLeafArray)
+                        mailbox.Context.Parent <! JoiningDone(hashKey)
                         
               //self table updation logic
             
@@ -442,6 +454,7 @@ let peer(mailbox : Actor<_>) =
                     
             if requestsToSend > 0 then
                 mailbox.Self <! StartSending
+       
                 
             
                 
@@ -456,12 +469,14 @@ let peer(mailbox : Actor<_>) =
 let system = System.create "system" (Configuration.defaultConfig())
 
 let mutable doneCount = totalRequests
-    
+let mutable nodeComplete = nNodes    
 let master(mailbox : Actor<_>) =
     
     let rec loop() = actor{
         let! message = mailbox.Receive()
         match message with
+        
+        
         | MasterStart ->
             let mutable count = 0
             let mutable notFirst = false
@@ -485,14 +500,18 @@ let master(mailbox : Actor<_>) =
                         if liveActor.[joinNode] then
                             let joinHexId = decToHexConverted joinNode
                             hashActorMap.Item(joinHexId) <! Joining(hexID, 0)
-                            
+                            Thread.Sleep(100)
                             flag <- false
                     notFirst <- true     
                     
                     liveActor.[randNode] <- true
                     hashActorMap.Add(hexID, child)
                     
+                    
+                    
+                    
             //initilization of network done
+            printf "LET's START ROUTING OF KEYS"
             for kv in hashActorMap do
                 kv.Value <! StartSending
                 
