@@ -7,6 +7,7 @@ open System.Threading.Tasks
 open Akka
 open Akka.Actor
 open Akka.Dispatch.SysMsg
+open System.Collections.Generic
 open Akka.FSharp
 open Akka.Actor
 open System.Diagnostics
@@ -15,7 +16,7 @@ open System.Threading;
 
 
 let nNodes = 100
-let nRequest = 5
+let nRequest = 2
 
 //Array to store hop counts for each request
 let totalRequests = nNodes * nRequest
@@ -24,7 +25,7 @@ let liveActor : bool[] = Array.zeroCreate nNodes
 
 let random = new System.Random()        
 let digits = int <| ceil(Math.Log(float <| nNodes) / Math.Log(float <| 16))
-let hashActorMap : System.Collections.Generic.IDictionary<String, IActorRef>  = dict[]
+let mutable hashActorMap = new Dictionary<string, IActorRef>()
 let col = 16
 type Message =
     | Initialize of String
@@ -177,6 +178,7 @@ let peer(mailbox : Actor<_>) =
         match message with
         |Initialize(id) ->
             peerId <- id
+            printf "My peer id is %A \n" peerId
             requestsToSend <- nRequest
             selfDecId <- hexToDec peerId
             routingTable <- Array2D.zeroCreate digits col
@@ -186,6 +188,7 @@ let peer(mailbox : Actor<_>) =
 
         
         | Joining(hashKey, rowIndex) ->
+            printf "joining for peerId %A and joining attempt with %A \n" hashKey peerId
   
             let prefixMatch = getPrefixMatch peerId hashKey
             let mutable rIndex = 0
@@ -217,8 +220,8 @@ let peer(mailbox : Actor<_>) =
             if String.IsNullOrEmpty minLeafHash then
                 minLeafHash <- peerId
                 
-            let routingColumn = hexToDec (string <| (peerId.[prefixMatch]))
-            if (isSmaller hashKey maxLeafHash) & (isGreater hashKey minLeafHash) then
+            let routingColumn = hexToDec (string <| (hashKey.[prefixMatch]))
+            if (isSmaller hashKey maxLeafHash) && (isGreater hashKey minLeafHash) then
                 //route towards nearest
                 let mutable nearest = peerId
                 for i in smallLeafArray do
@@ -269,20 +272,24 @@ let peer(mailbox : Actor<_>) =
               //self table updation logic
             
             if String.IsNullOrEmpty routingTable.[prefixMatch, routingColumn] then
-                routingTable.[prefixMatch, col] <- hashKey
+                routingTable.[prefixMatch, routingColumn] <- hashKey
             else
-                let currentNode = routingTable.[prefixMatch, col]
-                routingTable.[prefixMatch, col] <- closestNode currentNode hashKey peerId
+                let currentNode = routingTable.[prefixMatch, routingColumn]
+                routingTable.[prefixMatch, routingColumn] <- closestNode currentNode hashKey peerId
                 
             
                 
         |UpdateRouting(row, rowIndex) ->
             for i in 0 .. routingTable.GetLength(0) do
-                if String.IsNullOrEmpty routingTable.[rowIndex, i] then
-                    routingTable.[rowIndex, i] <- row.[i]
-                    
-                else
-                    routingTable.[rowIndex, i] <- closestNode routingTable.[rowIndex, i] row.[i] peerId 
+                if isNotNullString row.[i] && row.[i] <> peerId then
+                    let newRow = getPrefixMatch peerId row.[i]
+                    if String.IsNullOrEmpty routingTable.[newRow, i] then
+                        routingTable.[newRow, i] <- row.[i]
+                        
+                    else
+                        routingTable.[newRow, i] <- closestNode routingTable.[newRow, i] row.[i] peerId
+            
+            printf "Routing table for %A is %A \n" peerId routingTable
         
         |UpdateLeaf(sourceId, sourceSmallLeafArray, sourceBigLeafArray) ->
             let mutable combinedSourceLeaf : String[] = Array.zeroCreate 17
@@ -324,6 +331,9 @@ let peer(mailbox : Actor<_>) =
                                 if isGreater bigLeafArray.[maxIndex] i then
                                     bigLeafArray.[maxIndex] <- i
                                     hashActorMap.Item(i) <! IMadeYouLeaf(peerId)
+                                    
+//            printf "SmallLeaf table for %A is %A \n" peerId smallLeafArray
+//            printf "LargeLeaf table for %A is %A \n" peerId smallLeafArray
                                 
                                 
         | IMadeYouLeaf(sourceId) ->
@@ -334,23 +344,23 @@ let peer(mailbox : Actor<_>) =
                         if size < 8 then
                             let index = getEmptyIndexInLeaves smallLeafArray
                             smallLeafArray.[index] <- i
-                            hashActorMap.Item(i) <! IMadeYouLeaf(peerId)
+                            //hashActorMap.Item(i) <! IMadeYouLeaf(peerId)
                         else
                             let minIndex = getMinFromLeaf smallLeafArray
                             if isSmaller smallLeafArray.[minIndex] i then
                                 smallLeafArray.[minIndex] <- i
-                                hashActorMap.Item(i) <! IMadeYouLeaf(peerId)
+                                //hashActorMap.Item(i) <! IMadeYouLeaf(peerId)
                     else
                         let size = getSizeOfLeaves bigLeafArray
                         if size < 8 then
                             let index = getEmptyIndexInLeaves bigLeafArray
                             bigLeafArray.[index] <- i
-                            hashActorMap.Item(i) <! IMadeYouLeaf(peerId)
+                            //hashActorMap.Item(i) <! IMadeYouLeaf(peerId)
                         else
                             let maxIndex = getMaxFromLeaf bigLeafArray
                             if isGreater bigLeafArray.[maxIndex] i then
                                 bigLeafArray.[maxIndex] <- i
-                                hashActorMap.Item(i) <! IMadeYouLeaf(peerId)
+                                //hashActorMap.Item(i) <! IMadeYouLeaf(peerId)
                 
         | Route(key,hopCount, origin) ->
             
@@ -392,7 +402,7 @@ let peer(mailbox : Actor<_>) =
                 else
                     //routing table check
                     let prefixMatch = getPrefixMatch peerId key
-                    let routingColumn = hexToDec (string <| (peerId.[prefixMatch]))
+                    let routingColumn = hexToDec (string <| (key.[prefixMatch]))
                     if isNotNullString routingTable.[prefixMatch, routingColumn] then
                         hashActorMap.Item(routingTable.[prefixMatch, routingColumn]) <! Route(key, hopCount + 1, origin)
                     else
@@ -454,23 +464,30 @@ let master(mailbox : Actor<_>) =
         match message with
         | MasterStart ->
             let mutable count = 0
+            let mutable notFirst = false
             while count < nNodes do
                 let randNode = random.Next(nNodes)
+                
+                //printf "%A" liveActor
                 if not liveActor.[randNode] then
                     count <- count + 1
                     let mutable hexID = decToHexConverted randNode
+                    //printf "%A" hexID
+                   // printf "Creating node %A \n" hexID 
                     
                     let child = spawn mailbox hexID peer
-                    child <! Initialize
+                    child <! Initialize(hexID)
                     //find node to join
                     let mutable flag = true
-                    while flag do
+                    
+                    while flag && notFirst do
                         let joinNode = random.Next(nNodes)
                         if liveActor.[joinNode] then
                             let joinHexId = decToHexConverted joinNode
                             hashActorMap.Item(joinHexId) <! Joining(hexID, 0)
+                            
                             flag <- false
-                         
+                    notFirst <- true     
                     
                     liveActor.[randNode] <- true
                     hashActorMap.Add(hexID, child)
