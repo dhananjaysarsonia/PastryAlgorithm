@@ -12,18 +12,23 @@ open System.Diagnostics
 open Akka.Util
 open System.Threading;
 
-
 let nNodes = 100
 let nRequest = 5
+
+let range = 200
 
 //Array to store hop counts for each request
 let totalRequests = nNodes * nRequest
 let mutable hopCountArray = Array.create totalRequests 0
     
+let mutable aliveActors = Array.create range false     
+
+let random = new System.Random()
 let digits = int <| ceil(Math.Log(float <| nNodes) / Math.Log(float <| 16))
 let hashActorMap : System.Collections.Generic.IDictionary<String, IActorRef>  = dict[]
 let col = 16
 type Message =
+    | Start
     | Initialize of String
     | Joining of String*int
     | UpdateRouting of String[]*int
@@ -51,8 +56,6 @@ let getPrefixMatch (l : String) (r : String) =
     
 let deepCopyRow (routingTable : string [,]) (rowIndex) =
     Array.copy routingTable.[rowIndex,*]
-    
-    
 
 let closestNode sourceId destId newId=
     let source = hexToDec sourceId
@@ -127,9 +130,7 @@ let isEqual (l: String) (r : String) =
 
 let isNotNullString (str : String) =
     not (String.IsNullOrEmpty str)
-    
-    
-    
+             
 let peer(mailbox : Actor<_>) =
     let mutable peerId = ""
     let mutable routingTable : string [,] = Array2D.zeroCreate 0 0
@@ -157,7 +158,6 @@ let peer(mailbox : Actor<_>) =
                 copiedRow.[hexToDec (string <| (peerId.[prefixMatch]))] <- peerId
                 hashActorMap.Item(hashKey) <! UpdateRouting(copiedRow,rIndex)
                 rIndex <- rIndex + 1
-    
           
             //now routing and termination logic
             
@@ -171,7 +171,6 @@ let peer(mailbox : Actor<_>) =
                 maxLeafHash <- bigLeafArray.[maxLeafIndex]
             if smallLeafIndex <> -1 then
                 minLeafHash <- smallLeafArray.[smallLeafIndex]
-            
             
             if String.IsNullOrEmpty maxLeafHash then
                 maxLeafHash <- peerId
@@ -226,14 +225,6 @@ let peer(mailbox : Actor<_>) =
                     else
                         //termination logic repeated one as above
                         hashActorMap.Item(hashKey) <! UpdateLeaf(peerId, smallLeafArray, bigLeafArray)
-                        
-                            
-                            
-                            
-                            
-          
-            
-            
             
               //self table updation logic
             
@@ -242,9 +233,7 @@ let peer(mailbox : Actor<_>) =
             else
                 let currentNode = routingTable.[prefixMatch, col]
                 routingTable.[prefixMatch, col] <- closestNode currentNode hashKey peerId
-                
-            
-                
+                   
         |UpdateRouting(row, rowIndex) ->
             for i in 0 .. routingTable.GetLength(0) do
                 if String.IsNullOrEmpty routingTable.[rowIndex, i] then
@@ -253,28 +242,16 @@ let peer(mailbox : Actor<_>) =
                 else
                     routingTable.[rowIndex, i] <- closestNode routingTable.[rowIndex, i] row.[i] peerId 
         
-        
-                
-                
-            
-            
-            
-            
-        
-        
-        
         return! loop()
     }
     loop()
-    
-    
-
-
 
 let nodeId: String = String.replicate digits "0"
 printf "%A" nodeId
 
-
+//let system = System.create "system" (Configuration.defaultConfig())
+//let pastry = spawn system "pastry" pastryActor
+//pastry <! Start
 
 
 
