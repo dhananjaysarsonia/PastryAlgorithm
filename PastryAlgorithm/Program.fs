@@ -1,6 +1,7 @@
 ﻿// Learn more about F# at http://fsharp.org
 
 open System
+open System.Collections
 open System.Runtime.CompilerServices
 open System.Threading.Tasks
 open Akka
@@ -18,8 +19,10 @@ let nRequest = 5
 
 //Array to store hop counts for each request
 let totalRequests = nNodes * nRequest
-let mutable hopCountArray = Array.create totalRequests 0
-    
+let mutable hopCountArray = Array.zeroCreate  nNodes
+let liveActor : bool[] = Array.zeroCreate nNodes
+
+let random = new System.Random()        
 let digits = int <| ceil(Math.Log(float <| nNodes) / Math.Log(float <| 16))
 let hashActorMap : System.Collections.Generic.IDictionary<String, IActorRef>  = dict[]
 let col = 16
@@ -28,10 +31,12 @@ type Message =
     | Joining of String*int
     | UpdateRouting of String[]*int
     | UpdateLeaves
-    | Route of String*int
+    | Route of String*int*String
     | UpdateLeaf of String*String[]*String[]
     | IMadeYouLeaf of String
-    | Done of int
+    | Done of int*String*String
+    | StartSending
+    | MasterStart
     
     
 let hexToDec (hex: String) =
@@ -67,13 +72,13 @@ let closestNode sourceId destId newId=
     resId
     
     
-let calculateAvg =
-    let mutable sum = 0
-    for i in 0 .. totalRequests-1 do
-        sum <- sum + hopCountArray.[i]
-    let averageCount = sum / totalRequests
-    averageCount
-    
+//let calculateAvg =
+//    let mutable sum = 0
+//    for i in 0 .. totalRequests-1 do
+//        sum <- sum + hopCountArray.[i]
+//    let averageCount = sum / totalRequests
+//    averageCount
+//    
     
 let getMinFromLeaf (smallSet : String[]) =
     let mutable m :int = Int32.MaxValue
@@ -147,21 +152,35 @@ let getEmptyIndexInLeaves(leaves : String[]) =
         
     returnIndex
     
+    
+let decToHexConverted (i : int) =
+    let mutable hexID = decToHex i
+    let length = hexID.Length
+    let mutable rem = digits - length
+    while rem > 0 do
+        hexID <- "0" + hexID
+        rem <- rem - 1
+        
+    hexID    
 
     
 let peer(mailbox : Actor<_>) =
     let mutable peerId = ""
+    let mutable selfDecId = -1
     let mutable routingTable : string [,] = Array2D.zeroCreate 0 0
     let mutable smallLeafArray : String[] = [||]
     let mutable bigLeafArray : String[] = [||]
+    let mutable requestsToSend = 0
     
     let rec loop() = actor{
         let! message = mailbox.Receive ()
         match message with
         |Initialize(id) ->
             peerId <- id
+            requestsToSend <- nRequest
+            selfDecId <- hexToDec peerId
             routingTable <- Array2D.zeroCreate digits col
-            let decId = hexToDec <| peerId
+//            let decId = hexToDec <| peerId
             smallLeafArray <- Array.create 8 ""
             bigLeafArray <- Array.create 8 ""
 
@@ -333,7 +352,7 @@ let peer(mailbox : Actor<_>) =
                                 bigLeafArray.[maxIndex] <- i
                                 hashActorMap.Item(i) <! IMadeYouLeaf(peerId)
                 
-        | Route(key,hopCount) ->
+        | Route(key,hopCount, origin) ->
             
             if key <> peerId then
                 let mutable maxLeafIndex = getMaxFromLeaf bigLeafArray
@@ -366,16 +385,16 @@ let peer(mailbox : Actor<_>) =
                     //ignored for self check 
                     
                     if String.Compare(nearest, peerId) <> 0 then
-                        hashActorMap.Item(nearest) <! Route(key, hopCount + 1)
+                        hashActorMap.Item(nearest) <! Route(key, hopCount + 1, origin)
                     else
                         //I am taking it as the key
-                        mailbox.Context.Parent <! Done(hopCount)
+                        mailbox.Context.Parent <! Done(hopCount, key, origin)
                 else
                     //routing table check
                     let prefixMatch = getPrefixMatch peerId key
                     let routingColumn = hexToDec (string <| (peerId.[prefixMatch]))
                     if isNotNullString routingTable.[prefixMatch, routingColumn] then
-                        hashActorMap.Item(routingTable.[prefixMatch, routingColumn]) <! Route(key, hopCount + 1)
+                        hashActorMap.Item(routingTable.[prefixMatch, routingColumn]) <! Route(key, hopCount + 1, origin)
                     else
                         //search everything to find a nearest node
                     //rare case handle 
@@ -393,65 +412,99 @@ let peer(mailbox : Actor<_>) =
                                 rareCaseNode <- closestNode peerId key v
                         
                         if String.Compare(peerId, rareCaseNode) <> 0 then
-                            hashActorMap.Item(rareCaseNode) <! Route(key, hopCount + 1)
+                            hashActorMap.Item(rareCaseNode) <! Route(key, hopCount + 1, origin)
                         else
                             //termination logic repeated one as above
-                            mailbox.Context.Parent <! Done(hopCount)
+                            mailbox.Context.Parent <! Done(hopCount, key, origin)
             else
-                mailbox.Context.Parent <! Done(hopCount)
-                    
+                mailbox.Context.Parent <! Done(hopCount, key, origin)
                 
-                    
-                        
                 
-                        
-                        
+        | StartSending ->
+            requestsToSend <- requestsToSend - 1
+            let mutable flag = true
+            while flag do
+                let node = random.Next(nNodes)
+                if nNodes <> selfDecId then
+                    let hexKey = decToHexConverted node
+                    mailbox.Self <! Route(hexKey, 0, peerId)
+                    flag <- false
+                    
+            if requestsToSend > 0 then
+                mailbox.Self <! StartSending
+                
             
+                
+                
+//            
+        
+        return! loop()
+    }
+    loop()
+    
 
-            
-            
-                        
-                                
-                               
-                                
-            
-            
-//            for i in sourceSmallLeafArray do
-//                if (getSizeOfLeaves smallLeafArray) < 8 then
-//                    let index = getEmptyIndexInLeaves smallLeafArray
-//                    smallLeafArray.[index] <- i
-//                else
-//                    let minLeaf
-            
+let system = System.create "system" (Configuration.defaultConfig())
+
+let mutable doneCount = totalRequests
+    
+let master(mailbox : Actor<_>) =
+    
+    let rec loop() = actor{
+        let! message = mailbox.Receive()
+        match message with
+        | MasterStart ->
+            let mutable count = 0
+            while count < nNodes do
+                let randNode = random.Next(nNodes)
+                if not liveActor.[randNode] then
+                    count <- count + 1
+                    let mutable hexID = decToHexConverted randNode
                     
+                    let child = spawn mailbox hexID peer
+                    child <! Initialize
+                    //find node to join
+                    let mutable flag = true
+                    while flag do
+                        let joinNode = random.Next(nNodes)
+                        if liveActor.[joinNode] then
+                            let joinHexId = decToHexConverted joinNode
+                            hashActorMap.Item(joinHexId) <! Joining(hexID, 0)
+                            flag <- false
+                         
                     
-            //for i in smallLeafArray do
+                    liveActor.[randNode] <- true
+                    hashActorMap.Add(hexID, child)
+                    
+            //initilization of network done
+            for kv in hashActorMap do
+                kv.Value <! StartSending
                 
-//            let mLeafIndex = getMaxFromLeaf bigLeafArray
-//            let sLeafIndex  = getMinFromLeaf smallLeafArray
-            
-        
                 
-         
+        | Done(hopCount, key, origin)->
+            doneCount <- doneCount - 1
+            let originDec = hexToDec origin
+            hopCountArray.[originDec] <- hopCountArray.[originDec] + hopCount
             
-            
-            
-            
-        
-        
+            if doneCount = 0 then
+                //let's calculate average here
+                let mutable sum = 0
+                for i in hopCountArray do
+                    sum <- sum + i
+                
+                let average = sum / totalRequests
+                printf "Average hopCount: %A" average
+           
         
         return! loop()
     }
     loop()
     
     
+let parent = spawn system "master" master
+parent <! MasterStart
 
 
-
-let nodeId: String = String.replicate digits "0"
-printf "%A" nodeId
-
-
+System.Console.ReadLine() |> ignore
 
 
 
