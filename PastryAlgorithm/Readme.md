@@ -15,8 +15,8 @@ Using terminal, go to the directory containing the program.fsx file.
 
 **dotnet fsi --langversion:preview program.fsx numNodes numRequests**
  
-numNodes  is the total number of nodes in the peer to peer system with 10,000 as maximum
-numRequests is the total number of requests each node has to make
+- numNodes  is the total number of nodes in the peer to peer system with 10,000 as maximum
+- numRequests is the total number of requests each node has to make
 
 
 #### What is working?
@@ -29,26 +29,28 @@ numRequests is the total number of requests each node has to make
 
 
 ##### Output
-numNodes - 10
-numRequests - 10
-Average Hop Count - 0.89
 
-numNodes - 100
-numRequests - 10
-Average Hop Count - 1.416
+- numNodes - 10 and numRequests - 10
 
-numNodes - 1000
-numRequests - 10
-Average Hop Count - 
+   Average Hop Count - 0.89
 
-numNodes - 2500
-numRequests - 10
-Average Hop Count - 
+- numNodes - 100 and numRequests - 10
 
-numNodes - 5000
-numRequests - 10
-Average Hop Count - 
+   Average Hop Count - 1.416
 
-numNodes - 10000
-numRequests - 10
-Average Hop Count - 
+- numNodes - 1000 and numRequests - 10 
+
+   Average Hop Count - 
+
+- numNodes - 2500 and numRequests - 10
+
+   Average Hop Count - 
+
+- numNodes - 5000 and numRequests - 10
+
+   Average Hop Count - 
+
+- numNodes - 10000 and numRequests - 10
+
+   Average Hop Count - 
+
