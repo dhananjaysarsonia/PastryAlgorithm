@@ -15,8 +15,8 @@ open Akka.Util
 open System.Threading;
 
 
-let nNodes = 1000
-let nRequest = 1
+let nNodes = 10000
+let nRequest = 4
 
 //Array to store hop counts for each request
 let totalRequests = nNodes * nRequest
@@ -195,7 +195,7 @@ let peer(mailbox : Actor<_>) =
         | Joining(hashKey, rowIndex) ->
                 
             if String.Compare(hashKey, peerId) <> 0 then
-                Thread.Sleep(100)
+                //Thread.Sleep(100)
                 printf "joining for node %A and joining attempt with %A \n" hashKey peerId
                 printf "bigleafset for peerid %A is %A" peerId bigLeafArray
                 printf "smallLeafSet for peerId %A is %A" peerId smallLeafArray
@@ -455,7 +455,7 @@ let peer(mailbox : Actor<_>) =
             requestsToSend <- requestsToSend - 1
             let mutable flag = true
             while flag do
-                let node = random.Next(nNodes)
+                let node = random.Next(totalSpace)
                 if nNodes <> selfDecId then
                     let hexKey = decToHexConverted node
                     mailbox.Self <! Route(hexKey, 0, peerId)
