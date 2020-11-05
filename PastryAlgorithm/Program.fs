@@ -15,16 +15,19 @@ open Akka.Util
 open System.Threading;
 
 
-let nNodes = 100
-let nRequest = 2
+let nNodes = 1000
+let nRequest = 1
 
 //Array to store hop counts for each request
 let totalRequests = nNodes * nRequest
-let mutable hopCountArray = Array.zeroCreate  nNodes
-let liveActor : bool[] = Array.zeroCreate nNodes
+
+let mutable hopCountArray = new Dictionary<int, int>()
+let mutable liveActor  = Set.empty<int>
+
 
 let random = new System.Random()        
 let digits = int <| ceil(Math.Log(float <| nNodes) / Math.Log(float <| 16))
+let totalSpace = int <| (float(16) ** float(digits))
 let mutable hashActorMap = new Dictionary<string, IActorRef>()
 let col = 16
 type Message =
@@ -488,10 +491,10 @@ let master(mailbox : Actor<_>) =
             while not aliveFound do
                 
                 //while count < nNodes do
-                let randNode = random.Next(nNodes)
+                let randNode = random.Next(totalSpace)
                 
                 
-                if not liveActor.[randNode] then
+                if not (liveActor.Contains randNode) then
                     aliveFound <- true
                     let mutable hexID = decToHexConverted randNode
                     //printf "%A" hexID
@@ -501,17 +504,32 @@ let master(mailbox : Actor<_>) =
                     child <! Initialize(hexID)
                     //find node to join
                     let mutable flag = true
-                    
-                    while flag && notFirst do
-                       // printf "%A" randNode
-                        let joinNode = random.Next(nNodes)
-                        if liveActor.[joinNode] then
+                    if (notFirst) then
+                        let r = random.Next(liveActor |> seq<int> |> Seq.length)
+                        let mutable joinNode = 0
+                        let mutable index = 0
+                        for i in liveActor do
+                            if index = r then
+                                joinNode <- i
+                            else
+                                index <- index + 1
+                        
+                        if liveActor.Contains joinNode then
                             let joinHexId = decToHexConverted joinNode
                             hashActorMap.Item(joinHexId) <! Joining(hexID, 0)
                             //Thread.Sleep(100)
                             flag <- false
-                            
-                    liveActor.[randNode] <- true
+                        
+//                    while flag && notFirst do
+//                       // printf "%A" randNode
+//                        let joinNode = random.Next(totalSpace)
+//                        if liveActor.Contains randNode then
+//                            let joinHexId = decToHexConverted joinNode
+//                            hashActorMap.Item(joinHexId) <! Joining(hexID, 0)
+//                            //Thread.Sleep(100)
+//                            flag <- false
+                    liveActor <- liveActor.Add randNode
+                   // liveActor.[randNode] <- true
                     hashActorMap.Add(hexID, child)
                     if not notFirst then
                         notFirst <- true  
@@ -531,13 +549,18 @@ let master(mailbox : Actor<_>) =
         | Done(hopCount, key, origin)->
             doneCount <- doneCount - 1
             let originDec = hexToDec origin
-            hopCountArray.[originDec] <- hopCountArray.[originDec] + hopCount
+            if hopCountArray.ContainsKey originDec then
+                let c = hopCountArray.Item(originDec)
+                hopCountArray.[originDec] <- c + hopCount
+            else
+                hopCountArray.Add(originDec, hopCount)
+//            hopCountArray.[originDec] <- hopCountArray.[originDec] + hopCount
             
             if doneCount = 0 then
                 //let's calculate average here
                 let mutable sum = 0
                 for i in hopCountArray do
-                    sum <- sum + i
+                    sum <- sum + i.Value
                 
                 let average = (float <| sum) / (float <| totalRequests)
                 printf "Average hopCount: %A" average
@@ -546,8 +569,9 @@ let master(mailbox : Actor<_>) =
         | JoiningDone(idOfJoined) ->
             nodeComplete <- nodeComplete - 1
             printf "Nodes Left %A \n" nodeComplete
-            if nodeComplete = 1 then
+            if nodeComplete = 0 then
                 printf "LET's START ROUTING OF KEYS"
+                Thread.Sleep(2000)
                 for kv in hashActorMap do
                     kv.Value <! StartSending
             else
