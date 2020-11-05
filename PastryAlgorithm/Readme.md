@@ -26,7 +26,7 @@ A peer-to-peer network with "numNodes" number of nodes is initialized with a pee
 
 #### What is the largest network you managed to deal with?
 
-The largest network tested is for 10000 nodes with 10 requests per node.
+The largest network tested is for 1000 nodes with 10 requests per node.
 
 
 
@@ -38,25 +38,12 @@ Average Hop Count = 1.01
 
 - numNodes - 100 and numRequests - 10
 
-Average Hop Count - 1.511
+Average Hop Count - 1.59
 
 - numNodes - 500 and numRequests - 10
 
-Average Hop Count - 2.16
+Average Hop Count - 2.15
 
-- numNodes - 1000 and numRequests - 10 
+- numNodes - 1000 and numRequests - 10
 
-Average Hop Count - 2.42
-
-- numNodes - 2500 and numRequests - 10
-
-Average Hop Count - 
-
-- numNodes - 5000 and numRequests - 10
-
-Average Hop Count - 
-
-- numNodes - 10000 and numRequests - 10
-
-Average Hop Count - 
-
+Average Hop Count - 2.59
