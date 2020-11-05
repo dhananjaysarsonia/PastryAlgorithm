@@ -27,7 +27,8 @@ let mutable liveActor  = Set.empty<int>
 
 let random = new System.Random()        
 let digits = int <| ceil(Math.Log(float <| nNodes) / Math.Log(float <| 16))
-let totalSpace = int <| (float(16) ** float(digits))
+//let totalSpace = int <| (float(16) ** float(digits))
+let totalSpace = nNodes
 let mutable hashActorMap = new Dictionary<string, IActorRef>()
 let col = 16
 type Message =
@@ -384,11 +385,11 @@ let peer(mailbox : Actor<_>) =
                                 //hashActorMap.Item(i) <! IMadeYouLeaf(peerId)
                 
         | Route(key,hopCount, origin) ->
-            
+            printf "Routing for Key: %A from %A \n" key origin
             if key <> peerId then
                 let mutable maxLeafIndex = getMaxFromLeaf bigLeafArray
                 let mutable smallLeafIndex = getMinFromLeaf smallLeafArray
-                
+                  
                 let mutable maxLeafHash = ""
                 let mutable minLeafHash = ""
                 if maxLeafIndex <> -1 then
@@ -451,17 +452,40 @@ let peer(mailbox : Actor<_>) =
                 mailbox.Context.Parent <! Done(hopCount, key, origin)
                 
                 
-        | StartSending ->
+        |StartSending ->
             requestsToSend <- requestsToSend - 1
             let mutable flag = true
+            
+            
+                    
+                    
             while flag do
-                let node = random.Next(totalSpace)
-                if nNodes <> selfDecId then
-                    let hexKey = decToHexConverted node
+//                let r = random.Next(liveActor |> seq<int> |> Seq.length)
+                let newRandom = new Random()
+                let r = newRandom.Next(nNodes)
+                let mutable n = 0
+                let mutable index = 0
+                for i in seq <| liveActor do
+                    if index = r then
+                        n <- i
+                        index <- index + 1
+                    else
+                        index <- index + 1
+                
+                
+              //  printf "selected Key is %A \n" n
+                if n <> selfDecId then
+                    let hexKey = decToHexConverted n
                     mailbox.Self <! Route(hexKey, 0, peerId)
                     flag <- false
+                
+                
+                
+//                let node = random.Next(totalSpace)
+                
                     
             if requestsToSend > 0 then
+                //Thread.Sleep(1000)
                 mailbox.Self <! StartSending
        
                 
@@ -478,7 +502,8 @@ let peer(mailbox : Actor<_>) =
 let system = System.create "system" (Configuration.defaultConfig())
 
 let mutable doneCount = totalRequests
-let mutable nodeComplete = nNodes    
+let mutable nodeComplete = nNodes - 1
+let mutable startCount = nNodes
 let master(mailbox : Actor<_>) =
     let mutable notFirst = false
     let rec loop() = actor{
@@ -529,6 +554,7 @@ let master(mailbox : Actor<_>) =
 //                            //Thread.Sleep(100)
 //                            flag <- false
                     liveActor <- liveActor.Add randNode
+                    //startCount <- startCount - 1
                    // liveActor.[randNode] <- true
                     hashActorMap.Add(hexID, child)
                     if not notFirst then
@@ -548,6 +574,8 @@ let master(mailbox : Actor<_>) =
                 
         | Done(hopCount, key, origin)->
             doneCount <- doneCount - 1
+            if doneCount > 0 then
+                printf "requests Left %A \n" doneCount
             let originDec = hexToDec origin
             if hopCountArray.ContainsKey originDec then
                 let c = hopCountArray.Item(originDec)
@@ -574,7 +602,7 @@ let master(mailbox : Actor<_>) =
                 Thread.Sleep(2000)
                 for kv in hashActorMap do
                     kv.Value <! StartSending
-            else
+            else if nodeComplete > 0 then
                 mailbox.Context.Self <! MasterStart
                 
         
